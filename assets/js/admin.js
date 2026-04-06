@@ -50,6 +50,10 @@
             
             // Warn about insecure settings
             $('#rms_smtp_encryption').on('change', () => this.checkEncryption());
+
+            // Diagnostic test buttons
+            $('#rms_diagnostic_wp_btn').on('click', (e) => this.testDiagnostic(e, 'native_wp_mail'));
+            $('#rms_diagnostic_mail_btn').on('click', (e) => this.testDiagnostic(e, 'direct_mail'));
         }
         
         /**
@@ -217,20 +221,69 @@
          * Show result message
          * @param {string} type - Message type (success, error, loading)
          * @param {string} message - Message to display
+         * @param {jQuery} $result - Optional result element (defaults to SMTP test result)
          */
-        showResult(type, message) {
-            const $result = $('#rms_smtp_test_result');
-            $result.removeClass('success error loading')
+        showResult(type, message, $result) {
+            const $target = $result || $('#rms_smtp_test_result');
+            $target.removeClass('success error loading')
                    .addClass(type)
                    .text(message)
                    .show();
-            
+
             // Auto-hide success messages after 5 seconds
             if (type === 'success') {
                 setTimeout(() => {
-                    $result.fadeOut();
+                    $target.fadeOut();
                 }, 5000);
             }
+        }
+
+        /**
+         * Test mail diagnostic via AJAX
+         * @param {Event} e - Click event
+         * @param {string} testType - Test type (native_wp_mail or direct_mail)
+         */
+        testDiagnostic(e, testType) {
+            e.preventDefault();
+
+            const $btn = $(e.currentTarget);
+            const $result = $('#rms_diagnostic_result');
+            const testEmail = $('#rms_diagnostic_email').val().trim();
+
+            // Validate email
+            if (!this.isValidEmail(testEmail)) {
+                this.showResult('error', 'Please enter a valid email address.', $result);
+                return;
+            }
+
+            // Disable button during test
+            $btn.prop('disabled', true);
+            this.showResult('loading', rmsSmtpCf7Diagnostic.testing, $result);
+
+            // Make AJAX request
+            $.ajax({
+                url: rmsSmtpCf7Diagnostic.ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'rms_smtp_cf7_diagnostic',
+                    nonce: rmsSmtpCf7Diagnostic.nonce,
+                    test_type: testType,
+                    test_email: testEmail
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.showResult('success', response.data, $result);
+                    } else {
+                        this.showResult('error', response.data || rmsSmtpCf7Diagnostic.error, $result);
+                    }
+                },
+                error: (xhr, status, error) => {
+                    this.showResult('error', rmsSmtpCf7Diagnostic.error + ' (' + error + ')', $result);
+                },
+                complete: () => {
+                    $btn.prop('disabled', false);
+                }
+            });
         }
         
         /**

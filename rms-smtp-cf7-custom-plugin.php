@@ -57,7 +57,13 @@ final class RMS_SMTP_CF7_Plugin {
      * @var RMS_SMTP_CF7_Plugin|null
      */
     private static $instance = null;
-    
+
+    /**
+     * Flag to bypass SMTP for diagnostic tests
+     * @var bool
+     */
+    private $bypass_smtp = false;
+
     /**
      * Get single instance
      * @return RMS_SMTP_CF7_Plugin
@@ -98,6 +104,7 @@ final class RMS_SMTP_CF7_Plugin {
         
         // AJAX handlers
         add_action('wp_ajax_rms_smtp_cf7_test', [$this, 'handle_test_connection']);
+        add_action('wp_ajax_rms_smtp_cf7_diagnostic', [$this, 'handle_diagnostic']);
     }
     
     /**
@@ -150,6 +157,16 @@ final class RMS_SMTP_CF7_Plugin {
             'testing' => esc_html__('Testing connection...', 'rms-smtp-cf7'),
             'success' => esc_html__('Connection successful!', 'rms-smtp-cf7'),
             'error' => esc_html__('Connection failed. Please check your settings.', 'rms-smtp-cf7'),
+        ]);
+
+        wp_localize_script('rms-smtp-cf7-admin', 'rmsSmtpCf7Diagnostic', [
+            'ajaxurl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('rms_smtp_cf7_diagnostic'),
+            'testing' => esc_html__('Testing...', 'rms-smtp-cf7'),
+            'success_wp' => esc_html__('wp_mail() accepted the send request. Check your inbox.', 'rms-smtp-cf7'),
+            'success_mail' => esc_html__('mail() accepted the send request. Check your inbox.', 'rms-smtp-cf7'),
+            'error' => esc_html__('Test failed. Check diagnostics for details.', 'rms-smtp-cf7'),
+            'rate_limited' => esc_html__('Please wait 30 seconds between tests.', 'rms-smtp-cf7'),
         ]);
     }
     
@@ -343,8 +360,13 @@ final class RMS_SMTP_CF7_Plugin {
      * @param PHPMailer $phpmailer PHPMailer instance
      */
     public function configure_smtp($phpmailer) {
+        // Security: Skip SMTP config for diagnostic bypass
+        if ($this->bypass_smtp) {
+            return;
+        }
+
         $options = get_option('rms_smtp_cf7_options', $this->get_default_settings());
-        
+
         // Security: Only configure if SMTP is enabled
         if (empty($options['enabled'])) {
             return;
@@ -402,6 +424,108 @@ final class RMS_SMTP_CF7_Plugin {
         }
     }
     
+    /**
+     * Get passive diagnostics data
+     * @return array
+     */
+    private function get_diagnostics_data() {
+        return [
+            'php_mail_available' => function_exists('mail') && is_callable('mail'),
+            'wp_mail_ready' => function_exists('wp_mail'),
+            'php_version' => phpversion(),
+            'php_sapi' => php_sapi_name(),
+            'disable_functions' => ini_get('disable_functions') ?: 'None',
+            'sendmail_path' => ini_get('sendmail_path') ?: 'Not set',
+            'smtp_host' => ini_get('SMTP') ?: 'Not set',
+            'smtp_port' => ini_get('smtp_port') ?: 'Not set',
+        ];
+    }
+
+    /**
+     * Render diagnostics section
+     */
+    private function render_diagnostics_section() {
+        $diagnostics = $this->get_diagnostics_data();
+        ?>
+        <div class="rms-smtp-cf7-diagnostics">
+            <h2><?php esc_html_e('Mail Diagnostics', 'rms-smtp-cf7'); ?></h2>
+            <p><?php esc_html_e('Check if your server allows WordPress and PHP mail functions. Some hosting providers disable these to prevent spam.', 'rms-smtp-cf7'); ?></p>
+
+            <!-- Status Cards -->
+            <div class="rms-diagnostic-status">
+                <div class="rms-diagnostic-card <?php echo $diagnostics['php_mail_available'] ? 'success' : 'error'; ?>">
+                    <strong><?php esc_html_e('PHP mail()', 'rms-smtp-cf7'); ?></strong><br>
+                    <?php echo $diagnostics['php_mail_available']
+                        ? esc_html__('Available', 'rms-smtp-cf7')
+                        : esc_html__('Disabled or Unavailable', 'rms-smtp-cf7'); ?>
+                </div>
+                <div class="rms-diagnostic-card <?php echo $diagnostics['wp_mail_ready'] ? 'success' : 'warning'; ?>">
+                    <strong><?php esc_html_e('WordPress wp_mail()', 'rms-smtp-cf7'); ?></strong><br>
+                    <?php echo $diagnostics['wp_mail_ready']
+                        ? esc_html__('Ready', 'rms-smtp-cf7')
+                        : esc_html__('Not Available', 'rms-smtp-cf7'); ?>
+                </div>
+            </div>
+
+            <!-- Environment Config -->
+            <div class="rms-diagnostic-config">
+                <h3><?php esc_html_e('Server Mail Configuration', 'rms-smtp-cf7'); ?></h3>
+                <table>
+                    <tr>
+                        <th><?php esc_html_e('PHP Version', 'rms-smtp-cf7'); ?></th>
+                        <td><?php echo esc_html($diagnostics['php_version']); ?></td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e('PHP SAPI', 'rms-smtp-cf7'); ?></th>
+                        <td><?php echo esc_html($diagnostics['php_sapi']); ?></td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e('disable_functions', 'rms-smtp-cf7'); ?></th>
+                        <td><?php echo esc_html($diagnostics['disable_functions']); ?></td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e('sendmail_path', 'rms-smtp-cf7'); ?></th>
+                        <td><?php echo esc_html($diagnostics['sendmail_path']); ?></td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e('SMTP Host (php.ini)', 'rms-smtp-cf7'); ?></th>
+                        <td><?php echo esc_html($diagnostics['smtp_host']); ?></td>
+                    </tr>
+                    <tr>
+                        <th><?php esc_html_e('SMTP Port (php.ini)', 'rms-smtp-cf7'); ?></th>
+                        <td><?php echo esc_html($diagnostics['smtp_port']); ?></td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Test Controls -->
+            <h3><?php esc_html_e('Send Tests', 'rms-smtp-cf7'); ?></h3>
+            <p><?php esc_html_e('Test if your server can actually send emails using native WordPress or PHP functions.', 'rms-smtp-cf7'); ?></p>
+
+            <p>
+                <label for="rms_diagnostic_email">
+                    <?php esc_html_e('Test Email Address:', 'rms-smtp-cf7'); ?>
+                </label>
+                <input type="email"
+                       id="rms_diagnostic_email"
+                       class="regular-text"
+                       value="<?php echo esc_attr(get_option('admin_email')); ?>">
+            </p>
+
+            <p>
+                <button type="button" id="rms_diagnostic_wp_btn" class="button button-secondary">
+                    <?php esc_html_e('Test wp_mail() (Native)', 'rms-smtp-cf7'); ?>
+                </button>
+                <button type="button" id="rms_diagnostic_mail_btn" class="button button-secondary">
+                    <?php esc_html_e('Test mail() (PHP)', 'rms-smtp-cf7'); ?>
+                </button>
+            </p>
+
+            <div id="rms_diagnostic_result" class="rms-smtp-cf7-result"></div>
+        </div>
+        <?php
+    }
+
     /**
      * Render settings page
      */
@@ -640,6 +764,9 @@ final class RMS_SMTP_CF7_Plugin {
                 
                 <div id="rms_smtp_test_result" class="rms-smtp-cf7-result"></div>
             </div>
+
+            <!-- Mail Diagnostics Section -->
+            <?php $this->render_diagnostics_section(); ?>
         </div>
         <?php
     }
@@ -703,6 +830,72 @@ final class RMS_SMTP_CF7_Plugin {
             wp_send_json_success(esc_html__('Test email sent successfully!', 'rms-smtp-cf7'));
         } else {
             wp_send_json_error(esc_html__('Failed to send test email. Please check your SMTP settings.', 'rms-smtp-cf7'));
+        }
+    }
+
+    /**
+     * Handle AJAX diagnostic request
+     */
+    public function handle_diagnostic() {
+        // Security: Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'rms_smtp_cf7_diagnostic')) {
+            wp_send_json_error(esc_html__('Security check failed.', 'rms-smtp-cf7'));
+        }
+
+        // Security: Verify user capability
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(esc_html__('Permission denied.', 'rms-smtp-cf7'));
+        }
+
+        // Rate limiting: 30 seconds per user
+        $user_id = get_current_user_id();
+        $transient_key = 'rms_smtp_cf7_diag_' . $user_id;
+        if (get_transient($transient_key)) {
+            wp_send_json_error(esc_html__('Please wait 30 seconds between tests.', 'rms-smtp-cf7'));
+        }
+
+        // Security: Validate test type
+        $test_type = sanitize_text_field($_POST['test_type'] ?? '');
+        if (!in_array($test_type, ['native_wp_mail', 'direct_mail'], true)) {
+            wp_send_json_error(esc_html__('Invalid test type.', 'rms-smtp-cf7'));
+        }
+
+        // Security: Validate test email
+        $test_email = sanitize_email($_POST['test_email'] ?? '');
+        if (empty($test_email) || !is_email($test_email)) {
+            wp_send_json_error(esc_html__('Invalid test email address.', 'rms-smtp-cf7'));
+        }
+
+        // Set rate limit
+        set_transient($transient_key, true, 30);
+
+        $subject = esc_html__('RMS SMTP Diagnostic Test', 'rms-smtp-cf7');
+        $message = esc_html__('This is a diagnostic test email. If you received this, the mail function is working.', 'rms-smtp-cf7');
+        $headers = ['Content-Type: text/plain; charset=UTF-8'];
+
+        if ($test_type === 'native_wp_mail') {
+            // Bypass SMTP hook for native wp_mail test
+            $this->bypass_smtp = true;
+            try {
+                $sent = wp_mail($test_email, $subject, $message, $headers);
+                if ($sent) {
+                    wp_send_json_success(esc_html__('wp_mail() accepted the send request. Check your inbox.', 'rms-smtp-cf7'));
+                } else {
+                    wp_send_json_error(esc_html__('wp_mail() failed. The server may be blocking email sending.', 'rms-smtp-cf7'));
+                }
+            } catch (\Exception $e) {
+                wp_send_json_error(esc_html__('wp_mail() threw an exception: ', 'rms-smtp-cf7') . $e->getMessage());
+            } finally {
+                $this->bypass_smtp = false;
+            }
+        } else {
+            // Direct PHP mail() test
+            $sent = mail($test_email, $subject, $message, implode("\r\n", $headers));
+            if ($sent) {
+                wp_send_json_success(esc_html__('mail() accepted the send request. Check your inbox.', 'rms-smtp-cf7'));
+            } else {
+                wp_send_json_error(esc_html__('mail() returned false. The server may be blocking PHP mail().', 'rms-smtp-cf7'));
+            }
         }
     }
 }
