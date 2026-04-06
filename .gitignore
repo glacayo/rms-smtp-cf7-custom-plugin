@@ -1,0 +1,45 @@
+# WordPress Plugin
+*.log
+*.cache
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Environment
+.env
+.env.local
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build
+dist/
+build/
+*.zip
+
+# Testing
+coverage/
+.phpunit.result.cache
+
+# Debug
+debug.log
+wp-content/debug.log
+
+# Credentials (NEVER commit these)
+*.pem
+*.key
+credentials.json
