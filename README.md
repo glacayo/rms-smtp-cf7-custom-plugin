@@ -16,7 +16,7 @@ A secure WordPress plugin that enables SMTP email delivery for Contact Form 7 an
 This plugin implements multiple layers of security:
 
 ### 1. **Encrypted Password Storage**
-- Passwords are encrypted using AES-256-CBC encryption
+- Passwords are encrypted using AES-256-GCM encryption
 - Encryption key derived from WordPress salts
 - Never stored in plain text
 
@@ -233,7 +233,7 @@ Yes! This plugin configures SMTP for ALL WordPress emails, including:
 
 ### Is my password secure?
 
-Yes. Passwords are encrypted using AES-256-CBC with keys derived from your WordPress salt keys. They are never stored in plain text.
+Yes. Passwords are encrypted using AES-256-GCM with keys derived from your WordPress salt keys. They are never stored in plain text.
 
 ### Can I use this on multisite?
 
@@ -242,7 +242,7 @@ This plugin is designed for single-site installations. Multisite support may be 
 ## Support
 
 For issues, feature requests, or contributions:
-- GitHub: [https://github.com/RMS-Dev/smtp-cf7](https://github.com/RMS-Dev/smtp-cf7)
+- GitHub: [https://github.com/glacayo/rms-smtp-cf7-custom-plugin](https://github.com/glacayo/rms-smtp-cf7-custom-plugin)
 
 ## License
 
