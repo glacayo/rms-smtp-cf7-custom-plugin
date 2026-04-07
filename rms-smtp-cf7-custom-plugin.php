@@ -349,7 +349,6 @@ final class RMS_SMTP_CF7_Plugin {
         }
 
         list($iv, $tag, $ciphertext) = $parts;
-
         $decrypted = openssl_decrypt($ciphertext, 'aes-256-gcm', $key, 0, $iv, $tag);
 
         return $decrypted !== false ? $decrypted : '';
@@ -390,12 +389,10 @@ final class RMS_SMTP_CF7_Plugin {
         // Authentication
         if (!empty($options['authentication'])) {
             $phpmailer->SMTPAuth = true;
-            $phpmailer->Username = sanitize_text_field($options['username']);
+            $phpmailer->Username = $options['username']; // Already sanitized on save
             $decrypted = $this->decrypt_password($options['password']);
+
             if ($decrypted === false || $decrypted === '') {
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('RMS SMTP: Failed to decrypt SMTP password.');
-                }
                 $phpmailer->Password = '';
             } else {
                 $phpmailer->Password = $decrypted;
@@ -818,7 +815,7 @@ final class RMS_SMTP_CF7_Plugin {
         if (empty($test_email) || !is_email($test_email)) {
             wp_send_json_error(esc_html__('Invalid test email address.', 'rms-smtp-cf7'));
         }
-        
+
         // Send test email
         $subject = esc_html__('RMS SMTP Test Email', 'rms-smtp-cf7');
         $message = esc_html__('This is a test email from RMS SMTP for Contact Form 7 plugin. If you received this email, your SMTP configuration is working correctly.', 'rms-smtp-cf7');
@@ -898,6 +895,15 @@ final class RMS_SMTP_CF7_Plugin {
             }
         }
     }
+
+    /**
+     * Get plugin version
+     * @return string
+     */
+    public static function get_version() {
+        return RMS_SMTP_CF7_VERSION;
+    }
+
 }
 
 // Initialize plugin
@@ -909,7 +915,7 @@ register_activation_hook(__FILE__, function() {
     if (!current_user_can('activate_plugins')) {
         return;
     }
-    
+
     // Set default options
     $defaults = [
         'enabled' => 0,
@@ -923,7 +929,7 @@ register_activation_hook(__FILE__, function() {
         'from_name' => '',
         'smtp_debug' => 0,
     ];
-    
+
     add_option('rms_smtp_cf7_options', $defaults);
 });
 
@@ -933,7 +939,11 @@ register_deactivation_hook(__FILE__, function() {
     if (!current_user_can('deactivate_plugins')) {
         return;
     }
-    
+
     // Optional: Clean up options on deactivation
     // delete_option('rms_smtp_cf7_options');
 });
+
+// End of file
+
+?>

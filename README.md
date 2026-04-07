@@ -101,10 +101,86 @@ This plugin automatically hooks into WordPress's `wp_mail()` function, which Con
 
 ## Testing
 
+### Admin Panel Testing
+
 1. Go to **Tools → RMS SMTP**
 2. Enter your email in the "Test Email Address" field
 3. Click "Send Test Email"
 4. Check your inbox for the test message
+
+### CLI SMTP Connection Test Suite
+
+The `tests/` directory contains a standalone test suite that validates SMTP connections **without WordPress**. Useful for diagnosing connectivity issues before activating the plugin.
+
+#### Setup
+
+```bash
+# Copy the example env and fill in your credentials
+cp .env.example .env
+
+# Edit .env with your SMTP credentials (nano, vim, etc.)
+nano .env
+```
+
+#### Running Tests
+
+```bash
+# Test all configured servers (connection only)
+php tests/test-smtp-connection.php
+
+# Test with verbose SMTP protocol output
+php tests/test-smtp-connection.php --verbose
+
+# Test a single server (e.g. server 1 = Gmail)
+php tests/test-smtp-connection.php --server=1
+
+# Also send a test email (uses TEST_RECIPIENT from .env)
+php tests/test-smtp-connection.php --send-email
+
+# Override timeout (default: 10s)
+php tests/test-smtp-connection.php --timeout=5
+```
+
+#### What Each Test Checks
+
+| Step | Description |
+|------|-------------|
+| DNS Resolve | Resolves SMTP hostname to IP |
+| TCP Connect | Opens socket to host:port |
+| SMTP Banner | Reads server greeting (220) |
+| EHLO | Sends EHLO, checks 250 response |
+| AUTH Support | Verifies AUTH methods advertised |
+| STARTTLS | TLS handshake (if encryption=tls) |
+| AUTH LOGIN | Authenticates with credentials |
+| Test Email | Sends email via SMTP protocol (optional) |
+
+#### Test Results
+
+Results are saved as JSON in `tests/results/` with timestamps. Example:
+
+```json
+{
+  "timestamp": "2026-04-06 19:30:00",
+  "servers": {
+    "1": {
+      "host": "smtp.gmail.com",
+      "success": true,
+      "steps": {
+        "dns": { "success": true, "detail": "Resolved to 142.250.x.x" },
+        "connect": { "success": true },
+        "auth_login": { "success": true }
+      }
+    }
+  }
+}
+```
+
+#### Security Notes
+
+- The test suite is **CLI-only** — it refuses to run in a web context
+- Passwords are **never echoed** in output
+- `.env` is in `.gitignore` — credentials are never committed
+- Only run tests in development/local environments
 
 ## Debug Mode
 
